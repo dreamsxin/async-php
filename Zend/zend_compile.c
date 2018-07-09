@@ -8004,6 +8004,152 @@ void zend_compile_magic_const(znode *result, zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
+void zend_compile_async_call(znode *result, zend_ast *ast, zend_ast *ctx) /* {{{ */
+{
+	zend_string *name = NULL;
+	zend_string *original_name = NULL;
+	zend_bool qualified;
+
+	zend_ast *name_ast = ast->child[0];
+	zend_ast *args_ast = ast->child[1];
+
+	if (name_ast->kind == ZEND_AST_ZVAL) {
+		original_name = zend_ast_get_str(name_ast);
+		name = zend_resolve_function_name(original_name, name_ast->attr, &qualified);
+
+		if (!qualified && FC(current_namespace)) {
+			// => function_exists(name) ? name : original_name;
+
+			zend_ast *fe = zend_ast_create_zval_from_str(zend_string_init("function_exists", sizeof("function_exists") - 1, 1));
+			zend_ast *fa = zend_ast_create_list(1, ZEND_AST_ARG_LIST, zend_ast_create_zval_from_str(name));
+			zend_ast *fe_call = zend_ast_create(ZEND_AST_CALL, fe, fa);
+
+			zend_ast *tp = zend_ast_create_zval_from_str(name);
+			zend_ast *fp = zend_ast_create_zval_from_str(original_name);
+
+			name_ast = zend_ast_create(ZEND_AST_CONDITIONAL, fe_call, tp, fp);
+		} else {
+			name_ast = zend_ast_create_zval_from_str(name);
+		}
+	}
+
+	zend_ast *c1 = zend_ast_create_zval_from_str(zend_string_init("Closure", sizeof("Closure")-1, 1));
+	zend_ast *c2 = zend_ast_create_zval_from_str(zend_string_init("fromCallable", sizeof("fromCallable")-1, 1));
+	zend_ast *c3 = zend_ast_create_list(1, ZEND_AST_ARG_LIST, name_ast);
+
+	c1->attr = ZEND_NAME_FQ;
+
+	zend_ast *scope_ast = zend_ast_create(ZEND_AST_STATIC_CALL, c1, c2, c3);
+
+	zend_ast *array_ast = zend_ast_create_list(0, ZEND_AST_ARRAY);
+	zend_ast_list *list = zend_ast_get_list(args_ast);
+	uint32_t i;
+
+	for (i = 0; i < list->children; ++i) {
+		zend_ast_list_add(array_ast, zend_ast_create(ZEND_AST_ARRAY_ELEM, list->child[i], NULL));
+	}
+
+	zend_ast *task_ast = zend_ast_create_zval_from_str(zend_string_init("Concurrent\\Task", sizeof("Concurrent\\Task")-1, 1));
+	zend_ast *method_ast = zend_ast_create_zval_from_str(zend_string_init("async", sizeof("async")-1, 1));
+	zend_ast *list_ast = zend_ast_create_list(2, ZEND_AST_ARG_LIST, scope_ast, array_ast);
+
+	task_ast->attr = ZEND_NAME_FQ;
+
+	zend_ast *async_ast = zend_ast_create(ZEND_AST_STATIC_CALL, task_ast, method_ast, list_ast);
+
+	zend_compile_static_call(result, async_ast, 0);
+
+	if (name != NULL) {
+		zend_string_release_ex(name, 0);
+	}
+}
+/* }}} */
+
+void zend_compile_async_method_call(znode *result, zend_ast *ast, zend_ast *ctx) /* {{{ */
+{
+	zend_string *name = NULL;
+
+	zend_ast *target_ast = ast->child[0];
+	zend_ast *name_ast = ast->child[1];
+	zend_ast *args_ast = ast->child[2];
+
+	if (target_ast->kind == ZEND_AST_ZVAL) {
+		name = zend_resolve_class_name_ast(target_ast);
+		target_ast = zend_ast_create_zval_from_str(name);
+	}
+
+	zend_ast *call_ast = zend_ast_create_list(0, ZEND_AST_ARRAY);
+	zend_ast_list_add(call_ast, zend_ast_create(ZEND_AST_ARRAY_ELEM, target_ast, NULL));
+	zend_ast_list_add(call_ast, zend_ast_create(ZEND_AST_ARRAY_ELEM, name_ast, NULL));
+
+	zend_ast *c1 = zend_ast_create_zval_from_str(zend_string_init("Closure", sizeof("Closure")-1, 1));
+	zend_ast *c2 = zend_ast_create_zval_from_str(zend_string_init("fromCallable", sizeof("fromCallable")-1, 1));
+	zend_ast *c3 = zend_ast_create_list(1, ZEND_AST_ARG_LIST, call_ast);
+
+	c1->attr = ZEND_NAME_FQ;
+
+	zend_ast *scope_ast = zend_ast_create(ZEND_AST_STATIC_CALL, c1, c2, c3);
+
+	zend_ast *array_ast = zend_ast_create_list(0, ZEND_AST_ARRAY);
+	zend_ast_list *list = zend_ast_get_list(args_ast);
+	uint32_t i;
+
+	for (i = 0; i < list->children; ++i) {
+		zend_ast_list_add(array_ast, zend_ast_create(ZEND_AST_ARRAY_ELEM, list->child[i], NULL));
+	}
+
+	zend_ast *task_ast = zend_ast_create_zval_from_str(zend_string_init("Concurrent\\Task", sizeof("Concurrent\\Task")-1, 1));
+	zend_ast *method_ast = zend_ast_create_zval_from_str(zend_string_init("async", sizeof("async")-1, 1));
+	zend_ast *list_ast = zend_ast_create_list(2, ZEND_AST_ARG_LIST, scope_ast, array_ast);
+
+	task_ast->attr = ZEND_NAME_FQ;
+
+	zend_ast *async_ast = zend_ast_create(ZEND_AST_STATIC_CALL, task_ast, method_ast, list_ast);
+
+	zend_compile_static_call(result, async_ast, 0);
+
+	if (name != NULL) {
+		zend_string_release_ex(name, 0);
+	}
+}
+/* }}} */
+
+void zend_compile_async(znode *result, zend_ast *ast) /* {{{ */
+{
+	zend_ast *expr_ast = ast->child[0];
+	zend_ast *ctx_ast = ast->child[1];
+
+	switch (expr_ast->kind) {
+	case ZEND_AST_CALL:
+		zend_compile_async_call(result, expr_ast, ctx_ast);
+		break;
+	case ZEND_AST_METHOD_CALL:
+	case ZEND_AST_STATIC_CALL:
+		zend_compile_async_method_call(result, expr_ast, ctx_ast);
+		break;
+	default:
+		zend_error_noreturn(E_COMPILE_ERROR, "Async can only be used with function or method calls");
+		return;
+	}
+}
+/* }}} */
+
+void zend_compile_await(znode *result, zend_ast *ast) /* {{{ */
+{
+	zend_ast *expr_ast = ast->child[0];
+
+	zend_ast *task_ast = zend_ast_create_zval_from_str(zend_string_init("Concurrent\\Task", sizeof("Concurrent\\Task")-1, 1));
+	zend_ast *method_ast = zend_ast_create_zval_from_str(zend_string_init("await", sizeof("await")-1, 1));
+	zend_ast *args_ast = zend_ast_create_list(1, ZEND_AST_ARG_LIST, expr_ast);
+
+	task_ast->attr = ZEND_NAME_FQ;
+
+	zend_ast *call_ast = zend_ast_create(ZEND_AST_STATIC_CALL, task_ast, method_ast, args_ast);
+
+	zend_compile_static_call(result, call_ast, 0);
+}
+/* }}} */
+
 zend_bool zend_is_allowed_in_const_expr(zend_ast_kind kind) /* {{{ */
 {
 	return kind == ZEND_AST_ZVAL || kind == ZEND_AST_BINARY_OP
@@ -8373,6 +8519,12 @@ void zend_compile_expr(znode *result, zend_ast *ast) /* {{{ */
 			return;
 		case ZEND_AST_YIELD_FROM:
 			zend_compile_yield_from(result, ast);
+			return;
+		case ZEND_AST_ASYNC:
+			zend_compile_async(result, ast);
+			return;
+		case ZEND_AST_AWAIT:
+			zend_compile_await(result, ast);
 			return;
 		case ZEND_AST_INSTANCEOF:
 			zend_compile_instanceof(result, ast);

@@ -1290,6 +1290,14 @@ NEWLINE ("\r"|"\n"|"\r\n")
 	RETURN_TOKEN(T_YIELD);
 }
 
+<ST_IN_SCRIPTING>"async" {
+	RETURN_TOKEN(T_ASYNC);
+}
+
+<ST_IN_SCRIPTING>"await" {
+	RETURN_TOKEN(T_AWAIT);
+}
+
 <ST_IN_SCRIPTING>"try" {
 	RETURN_TOKEN(T_TRY);
 }

@@ -833,7 +833,7 @@ ZEND_API void zend_ast_apply(zend_ast *ast, zend_ast_apply_func fn) {
  *   40     left            xor
  *   50     left            and
  *   60     right           print
- *   70     right           yield
+ *   70     right           yield, async, await
  *   80     right           =>
  *   85     right           yield from
  *   90     right           = += -= *= /= .= %= &= |= ^= <<= >>= **=
@@ -1699,6 +1699,18 @@ simple_list:
 			break;
 		case ZEND_AST_YIELD_FROM:
 			PREFIX_OP("yield from ", 85, 86);
+		case ZEND_AST_ASYNC:
+			if (priority > 70) smart_str_appendc(str, '(');
+			smart_str_appends(str, "async ");
+			if (ast->child[1]) {
+				zend_ast_export_ex(str, ast->child[1], 70, indent);
+				smart_str_appends(str, " => ");
+			}
+			zend_ast_export_ex(str, ast->child[0], 70, indent);
+			if (priority > 70) smart_str_appendc(str, ')');
+			break;
+		case ZEND_AST_AWAIT:
+			PREFIX_OP("await ", 70, 71);
 		case ZEND_AST_COALESCE: BINARY_OP(" ?? ", 110, 111, 110);
 		case ZEND_AST_STATIC:
 			smart_str_appends(str, "static $");
